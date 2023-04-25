@@ -29,6 +29,8 @@ cations Zundels_remove (cations & Zundels, cations & stuff, const int & frame_pe
 
 std::vector<int> uniq_lifes (cations & cation_frames);
 
+void life_histogram_creation (std::vector<int> & cation_times);
+
 #include <algorithm>
 
 int main() {
@@ -47,17 +49,40 @@ int main() {
     std::vector<int> Zundel_times = std::move(uniq_lifes(Zundels));
     std::vector<int> H3O_times = std::move(uniq_lifes(H3O));
 
-    int longest_Zundel_life = *std::max_element(Zundel_times.begin(), Zundel_times.end());
-    int longest_H3O_life = *std::max_element(H3O_times.begin(), H3O_times.end());
 
-    //std::generate()
+    //std::vector<std::pair<double, int>> test = life_histogram_creation(Zundel_times);
 
-
+    life_histogram_creation (Zundel_times);
 
     return 0;
 }
 
 
+std::vector<std::pair<double, int>> groups (std::vector<int> & borders, std::vector<int> & data) {
+    std::vector<std::pair<double, int>> result (borders.size());
+    for (int j = 0; j < data.size(); ++j)
+        for (int i = borders.size(); i > 0; --i) {
+            if (data[j] >= i-1 && data[j] <= i)
+                ++result[i].second;
+        }
+    for (int i = 0; i < result.size(); ++i) {
+        result[i].first = double(i) * double(T) * timestep;
+        std::cout << result[i].first << '\t' << result[i].second << '\n';
+    }
+
+
+    return result;
+}
+
+
+void life_histogram_creation (std::vector<int> & cation_times) {
+    int first_group_border = 1;
+    int longest_life = *std::max_element(cation_times.begin(), cation_times.end());
+    std::vector<int> group_borders(longest_life);
+    std::generate(group_borders.begin(), group_borders.end(), [&] {return first_group_border++;});
+    std::vector<std::pair<double, int>> histogram = groups(group_borders, cation_times);
+    std::cout << "Here!\n";
+}
 
 
 
