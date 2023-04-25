@@ -100,11 +100,16 @@ std::vector<std::string> frame_read (const std::string & file_name, int timestep
                 continue;
             }
 
-            if (contain("#\n", line) && current_frame) break;
+            if (contain("#", line) && current_frame) {
+                current_frame = false;
+                break;
+            }
 
-            if (current_frame) frame.emplace_back(line);
+            if (current_frame)
+                frame.emplace_back(line);
 
         }
+        if (!current_frame) break;
     }
     return frame;
 }
@@ -124,7 +129,6 @@ void cleaning_stuff (std::vector<cation> & Zundels, std::vector<cation> & stuff)
             if (std::get<3>(Zundel) == std::get<0>(stuff[j]) ||
                 std::get<4>(Zundel) == std::get<0>(stuff[j]))
                 stuff.erase(stuff.begin()+j);
-    std::cout << "Here!" << std::endl;
 }
 
 
@@ -145,7 +149,7 @@ cations Z_remove (const std::string & Z_file_name, const std::string & stuff_fil
 
     std::vector<cation> Z_cations_tplvec, stuff_cations_tplvec;
     int i = 0;
-
+    std::cout << "Cleared frame:\n";
     do {
         clear_H3O.resize(clear_H3O.size()+1);
         Z_cations_tplvec.clear();
@@ -162,6 +166,7 @@ cations Z_remove (const std::string & Z_file_name, const std::string & stuff_fil
         for (const auto & k : stuff_cations_tplvec)
             clear_H3O[i].emplace_back(tuple2string(k));
 
+        std::cout << i << '\r';
         ++i;
     } while (!Z_cations_tplvec.empty()); // frame_read doesn't return the empty vector.
     return clear_H3O;
