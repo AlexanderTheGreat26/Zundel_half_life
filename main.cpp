@@ -9,7 +9,7 @@
 const int T = 100; // Frame period.
 
 
-typedef std::tuple<int, int, int, int, int> cation; // <Atom ID, atom type, bonds count, Connected atom ID , Connected atom ID>
+typedef std::tuple<int, int, int, int, int> cation; // <atom_ID, atom_type, bond_count, first_bonded_atom_ID, second_bonded_atom_ID>
 
 typedef std::vector<std::vector<std::string>> cations;
 
@@ -18,20 +18,23 @@ cations cations_strings (const std::string & file_name, const std::string & patt
 
 void file_creation (const std::string & file_name, cations & stuff, const int & step);
 
-cations Z_remove (const std::string & Z_file_name, const std::string & stuff_file_name, const int & frame_period);
+cations Zundels_remove (cations & Zundels, cations & stuff, const int & frame_period);
 
 
 int main() {
     // We need find different Zundel cations. Their sign is string " 2 2 " between atoms numbers.
-    cations Z = std::move(cations_strings("bonds.only", " 2 2 "));
-    file_creation("Zundels.only", Z, T);
+    cations Zundels = std::move(cations_strings("bonds.only", " 2 2 "));
+    file_creation("Zundels.only", Zundels, T);
     // Then we need H3O-cations, but in default file we can find parts of Z-cations with pattern " 3 3 ".
     cations stuff = std::move(cations_strings("bonds.only", " 3 3 "));
-    file_creation("stuff", stuff, T);
+    //file_creation("stuff", stuff, T);
     // Then need remove parts of this Z-cations from corresponding frames and find uniq H3O-cations.
     // For this purpose we will read the stuff-file and use type cation.
-    cations H3O = std::move(Z_remove("Zundels.only", "stuff", T));
+    cations H3O = std::move(Zundels_remove(Zundels, stuff, T));
     file_creation("H3O.only", H3O, T);
+
+
+
     return 0;
 }
 
@@ -105,8 +108,7 @@ std::vector<std::string> frame_read (const std::string & file_name, int timestep
                 break;
             }
 
-            if (current_frame)
-                frame.emplace_back(line);
+            if (current_frame) frame.emplace_back(line);
 
         }
         if (!current_frame) break;
@@ -144,21 +146,19 @@ std::string tuple2string (const Tuple& t) {
 }
 
 
-cations Z_remove (const std::string & Z_file_name, const std::string & stuff_file_name, const int & frame_period) {
+cations Zundels_remove (cations & Zundels, cations & stuff, const int & frame_period) {
     cations clear_H3O;
-
     std::vector<cation> Z_cations_tplvec, stuff_cations_tplvec;
     int i = 0;
-    std::cout << "Cleared frame:\n";
     do {
         clear_H3O.resize(clear_H3O.size()+1);
         Z_cations_tplvec.clear();
         stuff_cations_tplvec.clear();
-        std::vector<std::string> Zundels = frame_read(Z_file_name, i*frame_period);
-        for (auto & Zundel : Zundels)
+
+        for (auto & Zundel : Zundels[i])
             Z_cations_tplvec.emplace_back(string2cation(Zundel));
-        std::vector<std::string> different_stuff = frame_read(stuff_file_name, i*frame_period);
-        for (auto & j : different_stuff)
+
+        for (auto & j : stuff[i])
             stuff_cations_tplvec.emplace_back(string2cation(j));
 
         cleaning_stuff(Z_cations_tplvec, stuff_cations_tplvec);
@@ -166,8 +166,7 @@ cations Z_remove (const std::string & Z_file_name, const std::string & stuff_fil
         for (const auto & k : stuff_cations_tplvec)
             clear_H3O[i].emplace_back(tuple2string(k));
 
-        std::cout << i << '\r';
         ++i;
-    } while (!Z_cations_tplvec.empty()); // frame_read doesn't return the empty vector.
+    } while (!Z_cations_tplvec.empty()); // While frame_read doesn't return the empty vector.
     return clear_H3O;
 }
