@@ -1,24 +1,39 @@
+/* The program extract Zundel and H3O+ cations from files like bonds.reaxff from fix reaxff/bonds (LAMMPS).
+ * After the program plots histogram of uniq cation lifetimes. */
+
+/* Note that you need the GNUPlot.
+ *
+ * macOS
+ *
+ * The easiest way to install it thought the Homebrew.
+ * If you are not familiar with homebrew, read more about it here: https://brew.sh/
+ * To install GNUPlot:
+ * brew install gnuplot
+ *
+ * Linux
+ *
+ * You know how this works, don't you?
+ */
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include <string>
 #include <tuple>
 #include <sstream>
-#include <numeric>
+#include <algorithm>
+#include <utility>
+#include <array>
+#include <memory>
+#include <stdexcept>
 
 
 const int T = 100; // Frame period.
 const double timestep = 0.25; // fs
 
 
-
-
 typedef std::tuple<int, int, int, int, int> cation; // <atom_ID, atom_type, bond_count, first_bonded_atom_ID, second_bonded_atom_ID>
 
 typedef std::vector<std::vector<std::string>> cations;
-
-typedef std::vector<std::string> frame;
-
 
 
 cations cations_strings (const std::string & file_name, const std::string & pattern);
@@ -29,11 +44,13 @@ cations Zundels_remove (cations & Zundels, cations & stuff, const int & frame_pe
 
 std::vector<int> uniq_lifes (cations & cation_frames);
 
-void life_histogram_creation (std::vector<int> & cation_times);
+void life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name);
 
-#include <algorithm>
+std::string exec (const std::string & str);
+
 
 int main() {
+
     // We need find different Zundel cations. Their sign is string " 2 2 " between atoms numbers.
     cations Zundels = std::move(cations_strings("bonds.only", " 2 2 "));
     file_creation("Zundels.only", Zundels, T);
@@ -45,45 +62,108 @@ int main() {
     cations H3O = std::move(Zundels_remove(Zundels, stuff, T));
     file_creation("H3O.only", H3O, T);
     // Then we want to know, how long our particles lives.
-
+    // So in two std:vectors bellow we have lifetimes of every uniq cation till all simulation frames (not uniq due to atoms
+    // it consists.)
     std::vector<int> Zundel_times = std::move(uniq_lifes(Zundels));
     std::vector<int> H3O_times = std::move(uniq_lifes(H3O));
+    // And the last step - histogram via GNUPlot.
+    //life_histogram_creation(Zundel_times, "Uniq Zundel lifes", "Zundel");
+    life_histogram_creation(H3O_times, "Uniq H_3O+ lifes", "H3O");
 
-
-    //std::vector<std::pair<double, int>> test = life_histogram_creation(Zundel_times);
-
-    life_histogram_creation (Zundel_times);
+    exec("python3 bond_filter.py");
 
     return 0;
 }
 
 
-std::vector<std::pair<double, int>> groups (std::vector<int> & borders, std::vector<int> & data) {
-    std::vector<std::pair<double, int>> result (borders.size());
-    for (int j = 0; j < data.size(); ++j)
-        for (int i = borders.size(); i > 0; --i) {
-            if (data[j] >= i-1 && data[j] <= i)
-                ++result[i].second;
-        }
-    for (int i = 0; i < result.size(); ++i) {
-        result[i].first = double(i) * double(T) * timestep;
-        std::cout << result[i].first << '\t' << result[i].second << '\n';
-    }
-
-
+// Returns the terminal output.
+std::string exec (const std::string & str) {
+    const char* cmd = str.c_str();
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+        result += buffer.data();
+    result = result.substr(0, result.length()-1);
     return result;
 }
 
 
-void life_histogram_creation (std::vector<int> & cation_times) {
+
+void file_creation (const std::string & file_name, std::vector<std::pair<double, int>> & data) {
+    std::ofstream fout;
+    fout.open(file_name, std::ios::trunc);
+    for (auto & i : data)
+        fout << i.first << '\t' << i.second << '\n';
+    fout.close();
+}
+
+
+template <typename T>
+std::string toString (T val) {
+    std::ostringstream oss;
+    oss << val;
+    return oss.str();
+}
+
+
+void histogram_plot(const std::string &cation_type, const std::string &title, double & x_max, int & y_max) {
+    FILE *gp = popen("gnuplot  -persist", "w");
+    if (!gp) throw std::runtime_error("Error opening pipe to GNUplot.");
+    std::vector<std::string> stuff = {"set term pdf",
+                                      "set output \'" + cation_type + ".pdf\'",
+                                      "set key off",
+                                      "set grid xtics ytics",
+                                      "set xlabel \'Lifetime, fs\'",
+                                      "set ylabel \'Cations count\'",
+                                      "set title \'" + title + "\'",
+                                      "set xrange [0:" + toString(x_max) + "]",
+                                      "set yrange [0:" + toString(y_max) + "]",
+                                      "set boxwidth 10",
+                                      "set style fill solid",
+                                      "plot \'" + cation_type + "\' using 1:2 with boxes",
+                                      "set terminal pop",
+                                      "set output",
+                                      "replot", "q"};
+    for (const auto& it : stuff)
+        fprintf(gp, "%s\n", it.c_str());
+    pclose(gp);
+}
+
+
+std::vector<std::pair<double, int>> groups (std::vector<int> & borders, std::vector<int> & data) {
+    std::vector<std::pair<double, int>> result (borders.size());
+    for (int j : data)
+        for (int i = borders.size(); i > 0; --i)
+            if (j >= i-1 && j <= i)
+                ++result[i].second;
+    for (int i = 0; i < result.size(); ++i)
+        result[i].first = double(i) * double(T) * timestep;
+    return result;
+}
+
+
+int second_max (std::vector<std::pair<double, int>> & data) {
+    int max = data[0].second;
+    for (auto & i : data)
+        if (i.second > max)
+            max = i.second;
+    return max;
+}
+
+
+void life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name) {
     int first_group_border = 1;
     int longest_life = *std::max_element(cation_times.begin(), cation_times.end());
     std::vector<int> group_borders(longest_life);
     std::generate(group_borders.begin(), group_borders.end(), [&] {return first_group_border++;});
     std::vector<std::pair<double, int>> histogram = groups(group_borders, cation_times);
-    std::cout << "Here!\n";
+    file_creation(cation_name, histogram);
+    double x_max = histogram[histogram.size()-1].first;
+    int y_max = second_max(histogram);
+    histogram_plot(cation_name, title, x_max, y_max);
 }
-
 
 
 void file_creation (const std::string & file_name, cations & stuff, const int & step) {
@@ -114,8 +194,7 @@ int alive_for (std::string & uniq_cation, cations & cation_frames, int & frame_n
         if (any_of(uniq_cation, cation_frames[i], cation_in_frame_pos)) {
             cation_frames[i].erase(cation_frames[i].begin()+cation_in_frame_pos);
             ++lifetime;
-        } else
-            break;
+        } else break;
     }
     return lifetime;
 }
@@ -156,14 +235,6 @@ cations cations_strings (const std::string & file_name, const std::string & patt
             } else result.resize(result.size() + 1);
         }
     return result;
-}
-
-
-template <typename T>
-std::string toString (T val) {
-    std::ostringstream oss;
-    oss << val;
-    return oss.str();
 }
 
 
