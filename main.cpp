@@ -50,7 +50,7 @@ std::string exec (const std::string & str);
 
 
 int main() {
-
+    exec("python3 bond_filter.py");
     // We need find different Zundel cations. Their sign is string " 2 2 " between atoms numbers.
     cations Zundels = std::move(cations_strings("bonds.only", " 2 2 "));
     file_creation("Zundels.only", Zundels, T);
@@ -69,9 +69,6 @@ int main() {
     // And the last step - histogram via GNUPlot.
     //life_histogram_creation(Zundel_times, "Uniq Zundel lifes", "Zundel");
     life_histogram_creation(H3O_times, "Uniq H_3O+ lifes", "H3O");
-
-    exec("python3 bond_filter.py");
-
     return 0;
 }
 
