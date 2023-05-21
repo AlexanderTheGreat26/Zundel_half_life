@@ -131,9 +131,9 @@ void histogram_plot(const std::string &cation_type, const std::string &title, do
 
 std::vector<std::pair<double, int>> groups (std::vector<int> & borders, std::vector<int> & data) {
     std::vector<std::pair<double, int>> result (borders.size());
-    for (int j : data)
-        for (int i = borders.size(); i > 1; --i)
-            if (j >= i-1 && j < i)
+    for (int & j : data)
+        for (int i = 1; i < borders.size(); ++i)
+            if (j >= borders[i] && j < borders[i+1])
                 ++result[i].second;
     for (int i = 0; i < result.size(); ++i)
         result[i].first = double(i) * double(T) * timestep;
@@ -150,16 +150,14 @@ int second_max (std::vector<std::pair<double, int>> & data) {
 }
 
 
-void life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name) {
-    int first_group_border = 1;
+std::vector<std::pair<double, int>>
+life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name) {
+    int shortest_life = *std::min_element(cation_times.begin(), cation_times.end());
     int longest_life = *std::max_element(cation_times.begin(), cation_times.end());
-    std::vector<int> group_borders(longest_life);
-    std::generate(group_borders.begin(), group_borders.end(), [&] {return first_group_border++;});
+    std::vector<int> group_borders(longest_life-shortest_life+1);
+    std::generate(group_borders.begin(), group_borders.end(), [&] {return shortest_life++;});
     std::vector<std::pair<double, int>> histogram = groups(group_borders, cation_times);
-    file_creation(cation_name, histogram);
-    double x_max = histogram[histogram.size()-1].first;
-    int y_max = second_max(histogram);
-    histogram_plot(cation_name, title, x_max, y_max);
+    return histogram;
 }
 
 
