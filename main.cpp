@@ -28,7 +28,7 @@
 
 
 const int T = 100; // Frame period.
-const double timestep = 0.25; // fs
+const double timestep = 0.5; // fs
 
 
 typedef std::tuple<int, int, int, int, int> cation; // <atom_ID, atom_type, bond_count, first_bonded_atom_ID, second_bonded_atom_ID>
@@ -44,13 +44,23 @@ cations Zundels_remove (cations & Zundels, cations & stuff, const int & frame_pe
 
 std::vector<int> uniq_lifes (cations & cation_frames);
 
-void life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name);
+std::vector<std::pair<double, int>>
+life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name);
 
 std::string exec (const std::string & str);
 
 
+void file_creation (const std::string & file_name, std::vector<std::pair<double, int>> & data);
+
+int second_max (std::vector<std::pair<double, int>> & data);
+
+void histogram_plot(const std::string &cation_type, const std::string &title, double & x_max, int & y_max);
+
+
 int main() {
+
     exec("python3 bond_filter.py");
+
     // We need find different Zundel cations. Their sign is string " 2 2 " between atoms numbers.
     cations Zundels = std::move(cations_strings("bonds.only", " 2 2 "));
     file_creation("Zundels.only", Zundels, T);
@@ -67,8 +77,22 @@ int main() {
     std::vector<int> Zundel_times = std::move(uniq_lifes(Zundels));
     std::vector<int> H3O_times = std::move(uniq_lifes(H3O));
     // And the last step - histogram via GNUPlot.
-    //life_histogram_creation(Zundel_times, "Uniq Zundel lifes", "Zundel");
-    life_histogram_creation(H3O_times, "Uniq H_3O+ lifes", "H3O");
+
+    auto uniq_Z = life_histogram_creation(Zundel_times, "Uniq Zundel lifes", "Zundel_uniq");
+    file_creation("Zundels_uniq", uniq_Z);
+
+    auto uniq_H3O = life_histogram_creation(H3O_times, "Uniq H_3O+ lifes", "H3O_uniq");
+    file_creation("H3O_uniq", uniq_H3O);
+
+//    double x_max = uniq_Z[uniq_Z.size()-1].first;
+//    int y_max = second_max(uniq_Z);
+//    histogram_plot("Zundel_uniq", "Uniq Zundel life", x_max, y_max);
+//
+//    x_max = uniq_H3O[uniq_H3O.size()-1].first;
+//    y_max = second_max(uniq_H3O);
+//    histogram_plot("H3O_uniq", "Uniq H3O life",  x_max, y_max);
+
+
     return 0;
 }
 
@@ -106,6 +130,8 @@ std::string toString (T val) {
 
 
 void histogram_plot(const std::string &cation_type, const std::string &title, double & x_max, int & y_max) {
+
+
     FILE *gp = popen("gnuplot  -persist", "w");
     if (!gp) throw std::runtime_error("Error opening pipe to GNUplot.");
     std::vector<std::string> stuff = {"set term pdf",
@@ -130,13 +156,14 @@ void histogram_plot(const std::string &cation_type, const std::string &title, do
 
 
 std::vector<std::pair<double, int>> groups (std::vector<int> & borders, std::vector<int> & data) {
-    std::vector<std::pair<double, int>> result (borders.size());
+    std::vector<std::pair<double, int>> result (borders.size()-1);
     for (int & j : data)
-        for (int i = 1; i < borders.size(); ++i)
-            if (j >= borders[i] && j < borders[i+1])
-                ++result[i].second;
-    for (int i = 0; i < result.size(); ++i)
-        result[i].first = double(i) * double(T) * timestep;
+        //for (int i = borders.size(); i > 0; --i)
+        for (int i = 1; i < borders.size()-1; ++i)
+            if (j >= borders[i-1] && j < borders[i])
+                ++result[i-1].second;
+    for (int i = 1; i < result.size(); ++i)
+        result[i-1].first = double(i) * double(T) * timestep;
     return result;
 }
 
@@ -152,11 +179,13 @@ int second_max (std::vector<std::pair<double, int>> & data) {
 
 std::vector<std::pair<double, int>>
 life_histogram_creation(std::vector<int> &cation_times, const std::string &title, const std::string &cation_name) {
+    //int first_group_border = 1;
     int shortest_life = *std::min_element(cation_times.begin(), cation_times.end());
     int longest_life = *std::max_element(cation_times.begin(), cation_times.end());
     std::vector<int> group_borders(longest_life-shortest_life+1);
     std::generate(group_borders.begin(), group_borders.end(), [&] {return shortest_life++;});
     std::vector<std::pair<double, int>> histogram = groups(group_borders, cation_times);
+    //file_creation(cation_name, histogram);
     return histogram;
 }
 
@@ -183,12 +212,32 @@ bool any_of (std::string & current_cation, std::vector<std::string> & cation_fra
 }
 
 
+bool is_dead (std::string & uniq_cation, int & frame_number, cations & cation_frames, const int & life_step) {
+    int cation_in_frame_pos;
+    for (int i = frame_number; i < frame_number + life_step; ++i)
+        if (any_of(uniq_cation, cation_frames[i], cation_in_frame_pos)) {
+            cation_frames[i].erase(cation_frames[i].begin() + cation_in_frame_pos);
+            cation_frames[frame_number].emplace_back(uniq_cation);
+            return false;
+        }
+    return true;
+}
+
+
 int alive_for (std::string & uniq_cation, cations & cation_frames, int & frame_number) {
     int cation_in_frame_pos, lifetime = 0;
+    int current_step, max_life_step = 40; // Empirical parameter.
     for (int i = frame_number; i < cation_frames.size(); ++i) {
         if (any_of(uniq_cation, cation_frames[i], cation_in_frame_pos)) {
             cation_frames[i].erase(cation_frames[i].begin()+cation_in_frame_pos);
             ++lifetime;
+            current_step = i;
+            continue;
+        } else if (i + max_life_step > cation_frames.size()) {
+            max_life_step = cation_frames.size() - i;
+        } if (i <= current_step + max_life_step &&
+                   !is_dead(uniq_cation, i, cation_frames, max_life_step)) { 
+            continue;
         } else break;
     }
     return lifetime;
@@ -198,7 +247,7 @@ int alive_for (std::string & uniq_cation, cations & cation_frames, int & frame_n
 std::vector<int> uniq_lifes (cations & cation_frames) {
     std::vector<int> result;
     std::string cation;
-    for (int i = 0; i < cation_frames.size(); ++i)
+    for (int i = 20; i < cation_frames.size(); ++i) // 2000 timesteps for relaxation.
         while (!cation_frames[i].empty())
             for (int j = 0; j < cation_frames[i].size(); ++j)
                 result.emplace_back(alive_for(cation_frames[i][j], cation_frames, i));
