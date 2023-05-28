@@ -128,15 +128,18 @@ void histogram_plot(const std::string &cation_type, const std::string &title, do
     pclose(gp);
 }
 
-
-std::vector<std::pair<double, int>> groups (std::vector<int> & borders, std::vector<int> & data) {
+std::vector<std::pair<double, int>>
+groups (std::vector<int> & borders, std::vector<int> & data, const double & dt, const int & step) {
     std::vector<std::pair<double, int>> result (borders.size()-1);
-    for (int & j : data)
-        for (int i = 1; i < borders.size()-1; ++i)
-            if (j >= borders[i-1] && j < borders[i])
-                ++result[i-1].second;
-    for (int i = 1; i < result.size(); ++i)
-        result[i-1].first = double(i) * double(T) * timestep;
+    for (int & j : data) 
+        for (int i = 1; i < borders.size(); ++i)
+            if (j > borders[i - 1] && j <= borders[i]) {
+                ++result[i - 1].second;
+                break;
+            }
+    
+    for (int i = 0; i < result.size(); ++i)
+        result[i].first = double(i+1) * double(step) * dt;
     return result;
 }
 
