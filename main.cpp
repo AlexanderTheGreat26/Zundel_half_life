@@ -66,7 +66,7 @@ int main() {
     file_creation("Zundels.only", Zundels, T);
     // Then we need H3O-cations, but in default file we can find parts of Z-cations with pattern " 3 3 ".
     cations stuff = std::move(cations_strings("bonds.only", " 3 3 "));
-    // file_creation("stuff", stuff, T);
+    //file_creation("stuff", stuff, T);
     // Then need remove parts of this Z-cations from corresponding frames and find uniq H3O-cations.
     // For this purpose we will read the stuff-file and use type cation.
     cations H3O = std::move(Zundels_remove(Zundels, stuff, T));
@@ -129,9 +129,7 @@ std::string toString (T val) {
 }
 
 
-void histogram_plot(const std::string &cation_type, const std::string &title, double & x_max, int & y_max) {
-
-
+void histogram_plot (const std::string &cation_type, const std::string &title, double & x_max, int & y_max) {
     FILE *gp = popen("gnuplot  -persist", "w");
     if (!gp) throw std::runtime_error("Error opening pipe to GNUplot.");
     std::vector<std::string> stuff = {"set term pdf",
@@ -158,13 +156,13 @@ void histogram_plot(const std::string &cation_type, const std::string &title, do
 std::vector<std::pair<double, int>>
 groups (std::vector<int> & borders, std::vector<int> & data, const double & dt, const int & step) {
     std::vector<std::pair<double, int>> result (borders.size()-1);
-    for (int & j : data) {
+    for (int & j : data)
         for (int i = 1; i < borders.size(); ++i)
             if (j > borders[i - 1] && j <= borders[i]) {
                 ++result[i - 1].second;
                 break;
             }
-    }
+
     for (int i = 0; i < result.size(); ++i)
         result[i].first = double(i+1) * double(step) * dt;
     return result;
@@ -187,7 +185,7 @@ life_histogram_creation(std::vector<int> &cation_times, const std::string &title
     int longest_life = *std::max_element(cation_times.begin(), cation_times.end());
     std::vector<int> group_borders(longest_life-shortest_life+1);
     std::generate(group_borders.begin(), group_borders.end(), [&] {return shortest_life++;});
-    std::vector<std::pair<double, int>> histogram = groups(group_borders, cation_times);
+    std::vector<std::pair<double, int>> histogram = groups(group_borders, cation_times, timestep, T);
     //file_creation(cation_name, histogram);
     return histogram;
 }
@@ -229,17 +227,19 @@ bool is_dead (std::string & uniq_cation, int & frame_number, cations & cation_fr
 
 int alive_for (std::string & uniq_cation, cations & cation_frames, int & frame_number) {
     int cation_in_frame_pos, lifetime = 0;
-    int current_step, max_life_step = 40; // Empirical parameter.
+    int current_step, max_life_step = 10; // Empirical parameter.
     for (int i = frame_number; i < cation_frames.size(); ++i) {
+
+        if (i + max_life_step > cation_frames.size())
+            max_life_step = cation_frames.size() - i;
+
         if (any_of(uniq_cation, cation_frames[i], cation_in_frame_pos)) {
             cation_frames[i].erase(cation_frames[i].begin()+cation_in_frame_pos);
             ++lifetime;
             current_step = i;
             continue;
-        } else if (i + max_life_step > cation_frames.size()) {
-            max_life_step = cation_frames.size() - i;
-        } if (i <= current_step + max_life_step &&
-                   !is_dead(uniq_cation, i, cation_frames, max_life_step)) { 
+        } else if (i <= current_step + max_life_step &&
+                   !is_dead(uniq_cation, i, cation_frames, max_life_step)) {
             continue;
         } else break;
     }
@@ -281,11 +281,12 @@ cations cations_strings (const std::string & file_name, const std::string & patt
                 ++i;
             } else result.resize(result.size() + 1);
         }
+    result.erase(result.end()-1);
     return result;
 }
 
 
-std::vector<std::string> frame_read (const std::string & file_name, int timestep) {
+std::vector<std::string> frame_read (const std::string & file_name) {
     std::string line;
     std::vector<std::string> frame;
     bool current_frame = false;
